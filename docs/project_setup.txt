@@ -1,0 +1,59 @@
+<!-- Add these to your .csproj file -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Threading.Channels" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
+
+<!-- Alternative: Install via Package Manager Console -->
+<!-- 
+Install-Package System.Threading.Channels
+-->
+
+<!-- Or via .NET CLI -->
+<!-- 
+dotnet add package System.Threading.Channels
+-->
+
+<!-- No additional packages needed for WebSockets - they're built into ASP.NET Core -->
+
+<!-- Folder Structure -->
+<!--
+ProjectRoot/
+├── Program.cs
+├── Controllers/
+│   └── TaskController.cs
+├── Services/
+│   ├── ITaskQueue.cs
+│   ├── TaskQueue.cs
+│   ├── IWebSocketManager.cs
+│   ├── WebSocketManager.cs
+│   ├── ITaskProcessor.cs
+│   ├── TaskProcessor.cs
+│   └── BackgroundTaskService.cs
+├── Models/
+│   ├── TaskItem.cs
+│   ├── TaskRequest.cs
+│   ├── TaskResponse.cs
+│   └── WebSocketMessage.cs
+└── wwwroot/
+    └── index.html
+-->
+
+<!-- Using Directives needed (already included with ImplicitUsings) -->
+<!--
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Channels;
+using Microsoft.AspNetCore.Mvc;
+-->

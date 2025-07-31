@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Background Task Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .connection-status {
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .connecting { background-color: #fff3cd; color: #856404; }
+        
+        .connection-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .connection-controls button {
+            padding: 5px 10px;
+            font-size: 0.9em;
+        }
+        
+        .task-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            align-items: end;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input, button {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        button:hover { background-color: #0056b3; }
+        button:disabled { 
+            background-color: #6c757d; 
+            cursor: not-allowed; 
+        }
+        
+        .task-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .task-id {
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .task-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .status-queued { background-color: #fff3cd; color: #856404; }
+        .status-running { background-color: #cce5ff; color: #004085; }
+        .status-completed { background-color: #d4edda; color: #155724; }
+        .status-failed { background-color: #f8d7da; color: #721c24; }
+        .status-cancelled { background-color: #e2e3e5; color: #383d41; }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        
+        .task-result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e8f5e8;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .task-error {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #ffe6e6;
+            border-radius: 4px;
+            color: #d63384;
+            font-size: 0.9em;
+        }
+        
+        .logs {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.85em;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+        
+        .timestamp {
+            color: #666;
+            margin-right: 10px;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            min-width: 100px;
+        }
+        
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Background Task Monitor</h1>
+    
+    <div class="container">
+        <div id="connectionStatus" class="connection-status disconnected">
+            <span id="statusText">Disconnected</span>
+            <div class="connection-controls">
+                <button id="connectBtn" onclick="connectWebSocket()">Connect</button>
+                <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+                <button onclick="pingServer()">Ping</button>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div id="connectionCount" class="stat-value">0</div>
+                <div class="stat-label">Connections</div>
+            </div>
+            <div class="stat-item">
+                <div id="taskCount" class="stat-value">0</div>
+                <div class="stat-label">Active Tasks</div>
+            </div>
+            <div class="stat-item">
+                <div id="completedCount" class="stat-value">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+        
+        <div class="task-form">
+            <div class="form-group">
+                <label for="taskName">Task Name:</label>
+                <input type="text" id="taskName" value="Sample Task" />
+            </div>
+            <div class="form-group">
+                <label for="taskDuration">Duration (ms):</label>
+                <input type="number" id="taskDuration" value="5000" min="1000" max="30000" />
+            </div>
+            <button id="startTaskBtn" onclick="startTask()" disabled>Start Task</button>
+            <button onclick="clearTasks()">Clear All</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h3>Active Tasks</h3>
+        <div id="taskList"></div>
+    </div>
+    
+    <div class="container">
+        <h3>Connection Logs</h3>
+        <button onclick="clearLogs()" style="float: right; margin-bottom: 10px;">Clear Logs</button>
+        <div id="logs" class="logs"></div>
+    </div>
+
+    <script>
+        let socket = null;
+        let tasks = new Map();
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 5;
+        let reconnectInterval = 1000;
+        let isManualDisconnect = false;
+        
+        // Statistics
+        let stats = {
+            connections: 0,
+            activeTasks: 0,
+            completedTasks: 0
+        };
+        
+        // Initialize WebSocket connection on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            connectWebSocket();
+        });
+
+        function connectWebSocket() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                addLog("Already connected");
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            updateConnectionStatus('connecting');
+            addLog(`Attempting to connect to ${wsUrl}`);
+            isManualDisconnect = false;
+
+            try {
+                socket = new WebSocket(wsUrl);
+                
+                socket.onopen = function(event) {
+                    addLog("WebSocket connected successfully");
+                    updateConnectionStatus('connected');
+                    reconnectAttempts = 0;
+                };
+
+                socket.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        handleWebSocketMessage(message);
+                    } catch (error) {
+                        addLog(`Error parsing message: ${error.message}`);
+                    }
+                };
+
+                socket.onclose = function(event) {
+                    addLog(`WebSocket closed: ${event.code} - ${event.reason || 'No reason provided'}`);
+                    updateConnectionStatus('disconnected');
+                    
+                    // Attempt to reconnect if not manually disconnected
+                    if (!isManualDisconnect && reconnectAttempts < maxReconnectAttempts) {
+                        setTimeout(attemptReconnect, reconnectInterval * Math.pow(2, reconnectAttempts));
+                    }
+                };
+
+                socket.onerror = function(event) {
+                    addLog("WebSocket error occurred");
+                    updateConnectionStatus('disconnected');
+                };
+
+            } catch (error) {
+                addLog(`Failed to create WebSocket: ${error.message}`);
+                updateConnectionStatus('disconnected');
+            }
+        }
+
+        function disconnectWebSocket() {
+            isManualDisconnect = true;
+            if (socket) {
+                socket.close(1000, "Manual disconnect");
+                socket = null;
+            }
+            updateConnectionStatus('disconnected');
+            addLog("Manually disconnected");
+        }
+
+        function attemptReconnect() {
+            reconnectAttempts++;
+            addLog(`Reconnection attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+            connectWebSocket();
+        }
+
+        function updateConnectionStatus(status) {
+            const statusDiv = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+            const startBtn = document.getElementById('startTaskBtn');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            
+            statusDiv.className = `connection-status ${status}`;
+            
+            if (status === 'connected') {
+                statusText.textContent = 'Connected';
+                startBtn.disabled = false;
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else if (status === 'connecting') {
+                statusText.textContent = 'Connecting...';
+                startBtn.disabled = true;
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusText.textContent = 'Disconnected';
+                startBtn.disabled = true;
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        function handleWebSocketMessage(message) {
+            addLog(`Received: ${message.type}`);
+            
+            switch (message.type) {
+                case 'connection':
+                    handleConnectionMessage(message.data);
+                    break;
+                case 'taskQueued':
+                    handleTaskQueued(message.data);
+                    break;
+                case 'taskProgress':
+                    handleTaskProgress(message.data);
+                    break;
+                case 'pong':
+                    addLog("Pong received from server");
+                    break;
+                default:
+                    addLog(`Unknown message type: ${message.type}`);
+            }
+        }
+
+        function handleConnectionMessage(data) {
+            addLog(`Connected with socket ID: ${data.socketId}`);
+            stats.connections = 1;
+            updateStats();
+        }
+
+        function handleTaskQueued(taskData) {
+            addLog(`Task queued: ${taskData.id}`);
+            tasks.set(taskData.id, taskData);
+            stats.activeTasks++;
+            updateTaskDisplay();
+            updateStats();
+        }
+
+        function handleTaskProgress(taskData) {
+            addLog(`Task ${taskData.id}: ${taskData.status} (${taskData.progress}%)`);
+            
+            const existingTask = tasks.get(taskData.id);
+            const wasCompleted = existingTask && (existingTask.status === 'Completed' || existingTask.status === 'Failed');
+            const isNowCompleted = taskData.status === 'Completed' || taskData.status === 'Failed';
+            
+            tasks.set(taskData.id, taskData);
+            
+            if (!wasCompleted && isNowCompleted) {
+                stats.activeTasks = Math.max(0, stats.activeTasks - 1);
+                stats.completedTasks++;
+            }
+            
+            updateTaskDisplay();
+            updateStats();
+        }
+
+        function updateStats() {
+            document.getElementById('connectionCount').textContent = stats.connections;
+            document.getElementById('taskCount').textContent = stats.activeTasks;
+            document.getElementById('completedCount').textContent = stats.completedTasks;
+        }
+
+        function updateTaskDisplay() {
+            const taskList = document.getElementById('taskList');
+            
+            if (tasks.size === 0) {
+                taskList.innerHTML = '<p>No tasks running</p>';
+                return;
+            }
+
+            let html = '';
+            const sortedTasks = Array.from(tasks.values()).sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+            
+            for (let task of sortedTasks) {
+                const statusClass = `status-${task.status.toLowerCase().replace(/\s+/g, '-')}`;
+                
+                html += `
+                    <div class="task-item">
+                        <div class="task-header">
+                            <div>
+                                <strong>${task.name}</strong>
+                                <div class="task-id">ID: ${task.id}</div>
+                            </div>
+                            <div class="task-status ${statusClass}">${task.status}</div>
+                        </div>
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${task.progress}%">
+                                ${task.progress}%
+                            </div>
+                        </div>
+                        
+                        ${task.result ? `<div class="task-result">${task.result}</div>` : ''}
+                        ${task.error ? `<div class="task-error">Error: ${task.error}</div>` : ''}
+                    </div>
+                `;
+            }
+            
+            taskList.innerHTML = html;
+        }
+
+        async function startTask() {
+            const taskName = document.getElementById('taskName').value;
+            const duration = document.getElementById('taskDuration').value;
+            
+            if (!taskName.trim()) {
+                alert('Please enter a task name');
+                return;
+            }
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert('WebSocket is not connected');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/task/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: taskName,
+                        duration: parseInt(duration)
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addLog(`Task started: ${result.taskId}`);
+                } else {
+                    addLog(`Error starting task: ${result.message}`);
+                }
+            } catch (error) {
+                addLog(`Error: ${error.message}`);
+            }
+        }
+
+        function clearTasks() {
+            tasks.clear();
+            stats.activeTasks = 0;
+            stats.completedTasks = 0;
+            updateTaskDisplay();
+            updateStats();
+            addLog('Task list cleared');
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        function pingServer() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const message = JSON.stringify({
+                    type: 'ping',
+                    timestamp: new Date().toISOString()
+                });
+                socket.send(message);
+                addLog('Ping sent to server');
+            } else {
+                addLog('Cannot ping: WebSocket not connected');
+            }
+        }
+
+        function addLog(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // Handle page visibility change to manage connections
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                addLog('Page hidden - maintaining connection');
+            } else {
+                addLog('Page visible - checking connection');
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    connectWebSocket();
+                }
+            }
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', function() {
+            if (socket) {
+                isManualDisconnect = true;
+                socket.close(1000, "Page unload");
+            }
+        });
+    </script>
+</body>
+</html>
