@@ -40,8 +40,7 @@ if (app.Environment.IsDevelopment())
 // Configure WebSockets
 app.UseWebSockets(new WebSocketOptions
 {
-    KeepAliveInterval = TimeSpan.FromSeconds(30),
-    ReceiveBufferSize = 4096
+    KeepAliveInterval = TimeSpan.FromSeconds(60),
 });
 
 app.UseRouting();
