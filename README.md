@@ -11,9 +11,12 @@ A full-stack application demonstrating asynchronous background task processing w
 
 - ✅ Asynchronous background task queue using `System.Threading.Channels`
 - ✅ Real-time progress updates via WebSockets (not SignalR)
+- ✅ **Multi-client task isolation** - Each client only sees their own tasks
+- ✅ **Client-specific messaging** - Progress updates sent only to originating client
 - ✅ Server-side rendered SvelteKit frontend
 - ✅ Task status tracking and monitoring
 - ✅ Connection management with auto-reconnection
+- ✅ Flexible client identification (Socket ID, Session ID, Custom ID)
 - ✅ Responsive UI with connection logs
 
 ## Project Structure
@@ -157,20 +160,91 @@ dotnet run --environment Production
 
 **Server to Client:**
 - `connection` - Connection established with socket ID
-- `taskQueued` - New task added to queue
-- `taskProgress` - Task progress update
+- `taskQueued` - New task added to queue (sent only to originating client)
+- `taskProgress` - Task progress update (sent only to originating client)
 - `pong` - Response to ping
+
+### Client Identification
+
+The system supports multiple methods for identifying clients to ensure tasks are properly isolated:
+
+**Priority Order:**
+1. `clientId` in request body
+2. `X-Socket-Id` header (for WebSocket clients)
+3. `X-Session-Id` header (for session-based clients)
+4. `X-Client-Id` header (generic identifier)
+5. Auto-generated fallback ID
+
+**Task Request with Client ID:**
+```json
+{
+  "name": "Sample Task",
+  "duration": 5000,
+  "clientId": "your-client-id"
+}
+```
+
+**HTTP Headers Example:**
+```
+POST /api/task/start
+Content-Type: application/json
+X-Socket-Id: abc123def456
+```
+
+## Client Isolation Architecture
+
+### How It Works
+
+The system implements **true multi-client isolation** where each WebSocket connection represents a unique client, and tasks are completely separated between clients:
+
+1. **WebSocket Connection**: Each client receives a unique socket ID upon connection
+2. **Task Association**: Tasks are tagged with the client ID who triggered them  
+3. **Targeted Updates**: Progress messages are sent only to the originating client
+4. **Zero Cross-Talk**: Clients cannot see or receive updates from other clients' tasks
+
+### Implementation Details
+
+**Backend Components:**
+- `WebSocketManager`: Maintains client-to-socket mapping for targeted messaging
+- `TaskController`: Extracts client ID from requests using multiple fallback methods
+- `TaskProcessor`: Sends progress updates only to the task's originating client
+- `TaskItem.ClientId`: Associates each task with its creator
+
+**Frontend Integration:**
+- Automatic socket ID capture and storage
+- Client ID included in all task requests
+- Only client-specific task updates displayed
+
+### Benefits
+
+✅ **Scalability**: Supports unlimited concurrent clients without interference  
+✅ **Privacy**: Complete task isolation between users/sessions  
+✅ **Performance**: Targeted messaging reduces unnecessary network traffic  
+✅ **Flexibility**: Multiple client identification methods supported  
+✅ **Real-time**: Instant updates only to relevant clients
+
+### Visual Architecture
+
+The diagram above illustrates how the system maintains complete client isolation while processing tasks efficiently through a shared queue system.
 
 ## Usage
 
 1. **Open the frontend** at `http://localhost:5173`
-2. **Connect to WebSocket** - Should auto-connect on page load
+2. **Connect to WebSocket** - Should auto-connect on page load with unique socket ID
 3. **Start a task:**
    - Enter task name
    - Set duration (1000-30000ms)
-   - Click "Start Task"
-4. **Monitor progress** in real-time via WebSocket updates
+   - Click "Start Task" (automatically uses your socket ID)
+4. **Monitor progress** in real-time via WebSocket updates (only your tasks)
 5. **View logs** for connection and task events
+
+### Multi-Client Testing
+
+To test client isolation:
+1. **Open multiple browser tabs/windows** at `http://localhost:5173`
+2. **Each tab gets a unique socket ID** shown in connection status
+3. **Start tasks in different tabs** - each tab only shows its own tasks
+4. **Verify isolation** - tasks in one tab don't appear in others
 
 ## Development
 
@@ -251,10 +325,13 @@ The backend uses environment-based configuration:
 
 - ✅ Single task processing
 - ✅ Multiple concurrent tasks
+- ✅ **Multi-client task isolation**
+- ✅ **Client-specific progress updates**
 - ✅ Connection interruption/reconnection
 - ✅ Page refresh with task persistence
 - ✅ Long-running tasks
 - ✅ Task failure handling
+- ✅ **Cross-client interference prevention**
 
 ## Troubleshooting
 

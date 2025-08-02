@@ -15,6 +15,8 @@
 - ✅ **Features**:
   - Asynchronous task queuing
   - Real-time WebSocket communication
+  - **Multi-client task isolation and client-specific messaging**
+  - **Flexible client identification (Socket ID, Session ID, Custom ID)**
   - Automatic reconnection handling
   - Concurrent task processing
   - Progress tracking with step-by-step updates
@@ -45,8 +47,9 @@
 ## 🎯 Key Technical Achievements
 
 1. **WebSocket Implementation**: Native WebSocket implementation (not SignalR) with:
-   - Connection management
-   - Message broadcasting
+   - Connection management with unique socket IDs
+   - **Client-specific targeted messaging** (no cross-client interference)
+   - Message broadcasting and client isolation
    - Auto-reconnection logic
    - Ping/pong for connectivity testing
 
@@ -102,32 +105,65 @@ npm run dev
 
 1. **Start both services** using the quick start scripts
 2. **Open the frontend** in your browser
-3. **Verify WebSocket connection** (should auto-connect)
+3. **Verify WebSocket connection** (should auto-connect with unique socket ID)
 4. **Create tasks** with different names and durations
-5. **Monitor real-time progress** updates
+5. **Monitor real-time progress** updates (only your tasks visible)
 6. **Test multiple concurrent tasks**
-7. **Test connection resilience** by stopping/starting the backend
+7. **Test multi-client isolation**:
+   - Open multiple browser tabs/windows
+   - Start tasks in different tabs
+   - Verify each tab only shows its own tasks
+8. **Test connection resilience** by stopping/starting the backend
 
 ## 📊 Features Demonstrated
 
 ✅ **Asynchronous Background Processing**: Tasks run in the background without blocking the API  
-✅ **WebSocket Real-time Updates**: Progress updates sent immediately to all connected clients  
+✅ **Multi-Client Task Isolation**: Each client only sees and receives updates for their own tasks  
+✅ **Client-Specific WebSocket Updates**: Progress updates sent only to the originating client  
+✅ **Flexible Client Identification**: Support for Socket ID, Session ID, Custom ID, and fallback generation  
 ✅ **Queue Management**: Tasks queued efficiently using .NET Channels  
-✅ **Connection Management**: Auto-reconnection, ping/pong, connection status  
+✅ **Connection Management**: Auto-reconnection, ping/pong, connection status with unique IDs  
 ✅ **Server-Side Rendering**: SvelteKit SSR for better SEO and initial load  
 ✅ **Type Safety**: Full TypeScript implementation  
 ✅ **Responsive Design**: Works on desktop and mobile devices  
 ✅ **Error Handling**: Graceful error handling and user feedback  
 ✅ **Logging**: Comprehensive logging for debugging  
 ✅ **Development Tools**: Hot reload, watch mode, easy setup  
+✅ **Scalable Architecture**: Clean separation for multi-tenant scenarios  
 
 ## 🛠️ Architecture Highlights
 
 - **Backend**: Clean Architecture with separation of concerns
 - **Frontend**: Modern component-based architecture with reactive state
-- **Communication**: REST API for commands, WebSocket for real-time updates
-- **Data Flow**: Request → Queue → Background Processing → WebSocket Updates
+- **Communication**: REST API for commands, WebSocket for client-specific real-time updates
+- **Data Flow**: Client Request + ID → Queue → Background Processing → Targeted WebSocket Updates
+- **Client Isolation**: Tasks separated by client ID with no cross-client interference
 - **State Management**: Svelte stores for reactive state management
 - **Error Boundaries**: Comprehensive error handling at all levels
 
-This implementation provides a solid foundation for building real-world applications that require background task processing with real-time user feedback.
+## 🔐 Client Isolation Implementation
+
+### Key Technical Innovation
+
+The most significant feature of this implementation is **true multi-client task isolation**:
+
+**Problem Solved**: Traditional WebSocket applications broadcast updates to all connected clients, creating privacy issues and unnecessary network traffic in multi-user scenarios.
+
+**Solution Implemented**:
+- **Unique Client Identification**: Each WebSocket connection receives a unique socket ID
+- **Task-Client Association**: Every task is tagged with its originating client ID  
+- **Targeted Messaging**: Progress updates sent exclusively to the task creator
+- **Zero Cross-Client Interference**: Complete isolation between different clients
+
+**Architecture Benefits**:
+- 🏗️ **Scalable**: Handles unlimited concurrent clients efficiently
+- 🔒 **Secure**: Complete privacy between client sessions  
+- ⚡ **Performant**: Reduces network traffic with targeted updates
+- 🧩 **Flexible**: Multiple client identification methods supported
+- 🔄 **Real-time**: Instant updates without cross-client pollution
+
+This client isolation architecture makes the system suitable for **real-world multi-tenant scenarios** where privacy and performance are critical.
+
+---
+
+This implementation provides a solid foundation for building real-world applications that require background task processing with real-time user feedback and multi-client support.
