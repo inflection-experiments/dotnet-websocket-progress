@@ -93,10 +93,21 @@ public class TaskProcessor : ITaskProcessor
                 error = taskItem.Error,
                 createdAt = taskItem.CreatedAt,
                 startedAt = taskItem.StartedAt,
-                completedAt = taskItem.CompletedAt
+                completedAt = taskItem.CompletedAt,
+                clientId = taskItem.ClientId
             }
         };
 
-        await _webSocketManager.BroadcastMessageAsync(message);
+        // Send progress update only to the specific client who triggered this task
+        if (!string.IsNullOrEmpty(taskItem.ClientId))
+        {
+            await _webSocketManager.SendMessageToClientAsync(taskItem.ClientId, message);
+        }
+        else
+        {
+            // Fallback: broadcast if no client ID is set (backwards compatibility)
+            _logger.LogWarning("Task {TaskId} has no ClientId, broadcasting to all clients", taskItem.Id);
+            await _webSocketManager.BroadcastMessageAsync(message);
+        }
     }
 }

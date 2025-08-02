@@ -9,6 +9,7 @@ namespace WebSocketsBackend.Services;
 public class WebSocketManager : IWebSocketManager
 {
     private readonly ConcurrentDictionary<string, WebSocket> _sockets = new();
+    private readonly ConcurrentDictionary<WebSocket, string> _socketToId = new(); // Reverse lookup from socket to ID
     private readonly ILogger<WebSocketManager> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -24,6 +25,7 @@ public class WebSocketManager : IWebSocketManager
     {
         var socketId = Guid.NewGuid().ToString();
         _sockets.TryAdd(socketId, webSocket);
+        _socketToId.TryAdd(webSocket, socketId); // Add reverse lookup
         _logger.LogInformation("WebSocket connected: {SocketId}. Total connections: {Count}", 
             socketId, _sockets.Count);
 
@@ -49,6 +51,7 @@ public class WebSocketManager : IWebSocketManager
         finally
         {
             _sockets.TryRemove(socketId, out _);
+            _socketToId.TryRemove(webSocket, out _); // Remove reverse lookup
             _logger.LogInformation("WebSocket disconnected: {SocketId}. Total connections: {Count}", 
                 socketId, _sockets.Count);
             
@@ -169,12 +172,38 @@ public class WebSocketManager : IWebSocketManager
         }
     }
 
+    public async Task SendMessageToClientAsync(string clientId, WebSocketMessage message)
+    {
+        if (_sockets.TryGetValue(clientId, out var webSocket) && webSocket.State == WebSocketState.Open)
+        {
+            await SendMessageToSocketAsync(webSocket, message);
+        }
+        else
+        {
+            _logger.LogWarning("Cannot send message to client {ClientId}: Socket not found or not open", clientId);
+        }
+    }
+
+    public string? GetSocketIdForWebSocket(WebSocket webSocket)
+    {
+        return _socketToId.TryGetValue(webSocket, out var socketId) ? socketId : null;
+    }
+
     public void RemoveSocket(WebSocket webSocket)
     {
-        var socketToRemove = _sockets.FirstOrDefault(x => x.Value == webSocket);
-        if (!socketToRemove.Equals(default(KeyValuePair<string, WebSocket>)))
+        // Remove from reverse lookup first
+        if (_socketToId.TryRemove(webSocket, out var socketId))
         {
-            _sockets.TryRemove(socketToRemove.Key, out _);
+            _sockets.TryRemove(socketId, out _);
+        }
+        else
+        {
+            // Fallback: find by value (less efficient but ensures cleanup)
+            var socketToRemove = _sockets.FirstOrDefault(x => x.Value == webSocket);
+            if (!socketToRemove.Equals(default(KeyValuePair<string, WebSocket>)))
+            {
+                _sockets.TryRemove(socketToRemove.Key, out _);
+            }
         }
     }
 

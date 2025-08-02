@@ -3,6 +3,7 @@ const API_BASE_URL = 'http://localhost:5000/api';
 interface TaskRequest {
 	name: string;
 	duration: number;
+	clientId?: string;
 	parameters?: Record<string, any>;
 }
 
@@ -22,13 +23,26 @@ interface ServiceStatus {
 }
 
 export class ApiClient {
-	async startTask(request: TaskRequest): Promise<TaskResponse> {
+	async startTask(request: TaskRequest, socketId?: string): Promise<TaskResponse> {
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+		};
+
+		// Add socket ID to headers if provided
+		if (socketId) {
+			headers['X-Socket-Id'] = socketId;
+		}
+
+		// Include clientId in request body if not already set
+		const requestBody = {
+			...request,
+			clientId: request.clientId || socketId
+		};
+
 		const response = await fetch(`${API_BASE_URL}/task/start`, {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify(request)
+			headers,
+			body: JSON.stringify(requestBody)
 		});
 
 		if (!response.ok) {

@@ -12,6 +12,7 @@ interface TaskItem {
 	name: string;
 	status: string;
 	progress: number;
+	clientId?: string;
 	result?: string;
 	error?: string;
 	createdAt: string;
@@ -224,6 +225,15 @@ class WebSocketManager {
 		tasks.set(new Map());
 		stats.update(s => ({ ...s, activeTasks: 0, completedTasks: 0 }));
 		this.addLog('Task list cleared');
+	}
+
+	getSocketId(): string | null {
+		// Get the current socket ID from the connection state
+		let currentSocketId: string | null = null;
+		connectionState.subscribe(state => {
+			currentSocketId = state.socketId || null;
+		})();
+		return currentSocketId;
 	}
 }
 

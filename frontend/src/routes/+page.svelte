@@ -46,12 +46,15 @@
 
 		isStartingTask = true;
 		try {
+			// Get the socket ID for this client
+			const socketId = $connectionState.socketId;
+			
 			const result = await apiClient.startTask({
 				name: taskName,
 				duration: taskDuration
-			});
+			}, socketId);
 
-			console.log(`Task started: ${result.taskId}`);
+			console.log(`Task started: ${result.taskId} for client: ${socketId}`);
 		} catch (error) {
 			console.error('Error starting task:', error);
 			alert(`Error starting task: ${error}`);
