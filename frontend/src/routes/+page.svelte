@@ -8,10 +8,43 @@
 	let taskName = $state('Sample Task');
 	let taskDuration = $state(5000);
 	let isStartingTask = $state(false);
+	let sessionId = $state<string | null>(null);
+
+	function generateRandomId(): string {
+		if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+			return crypto.randomUUID();
+		}
+		// Fallback if randomUUID is not available
+		const bytes = new Uint8Array(16);
+		if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+			crypto.getRandomValues(bytes);
+			return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+		}
+		return 'sess-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+	}
+
+	function getOrCreateSessionId(): string {
+		try {
+			const stored = localStorage.getItem('sessionId');
+			if (stored && stored.trim().length > 0) {
+				return stored;
+			}
+			const id = generateRandomId();
+			localStorage.setItem('sessionId', id);
+			// Also set a cookie for backend-friendly access if needed
+			document.cookie = `sessionId=${encodeURIComponent(id)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+			return id;
+		} catch {
+			const id = generateRandomId();
+			return id;
+		}
+	}
 
 	onMount(() => {
-		// Connect to WebSocket when the component mounts
-		wsManager.connect();
+		// Determine or create a session id and connect the WebSocket with it
+		const id = getOrCreateSessionId();
+		sessionId = id;
+		wsManager.connect(id);
 
 		// Handle page visibility change
 		const handleVisibilityChange = () => {
@@ -20,7 +53,7 @@
 			} else {
 				console.log('Page visible - checking connection');
 				if (!$connectionState.connected) {
-					wsManager.connect();
+					wsManager.connect(sessionId ?? undefined);
 				}
 			}
 		};

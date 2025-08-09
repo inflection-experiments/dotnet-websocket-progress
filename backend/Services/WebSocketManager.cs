@@ -8,7 +8,8 @@ namespace WebSocketsBackend.Services;
 
 public class WebSocketManager : IWebSocketManager
 {
-    private readonly ConcurrentDictionary<string, WebSocket> _sockets = new();
+    // Maps client/session id -> set of sockets (value is a dummy byte to emulate a concurrent set)
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<WebSocket, byte>> _clientIdToSockets = new();
     private readonly ConcurrentDictionary<WebSocket, string> _socketToId = new(); // Reverse lookup from socket to ID
     private readonly ILogger<WebSocketManager> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -21,13 +22,17 @@ public class WebSocketManager : IWebSocketManager
         _logger = logger;
     }
 
-    public async Task HandleWebSocketAsync(WebSocket webSocket)
+    public async Task HandleWebSocketAsync(WebSocket webSocket, string? desiredSocketId = null)
     {
-        var socketId = Guid.NewGuid().ToString();
-        _sockets.TryAdd(socketId, webSocket);
-        _socketToId.TryAdd(webSocket, socketId); // Add reverse lookup
-        _logger.LogInformation("WebSocket connected: {SocketId}. Total connections: {Count}", 
-            socketId, _sockets.Count);
+        // Prefer provided desiredSocketId (e.g., sessionId). Multiple sockets can map to the same id.
+        var socketId = !string.IsNullOrWhiteSpace(desiredSocketId) ? desiredSocketId : Guid.NewGuid().ToString();
+
+        var socketSet = _clientIdToSockets.GetOrAdd(socketId, static _ => new ConcurrentDictionary<WebSocket, byte>());
+        socketSet.TryAdd(webSocket, 0);
+        _socketToId.TryAdd(webSocket, socketId);
+
+        _logger.LogInformation("WebSocket connected: {SocketId}. Total open sockets: {Count}", 
+            socketId, GetConnectionCount());
 
         try
         {
@@ -50,10 +55,20 @@ public class WebSocketManager : IWebSocketManager
         }
         finally
         {
-            _sockets.TryRemove(socketId, out _);
-            _socketToId.TryRemove(webSocket, out _); // Remove reverse lookup
-            _logger.LogInformation("WebSocket disconnected: {SocketId}. Total connections: {Count}", 
-                socketId, _sockets.Count);
+            // Remove this socket from its client set
+            if (_socketToId.TryRemove(webSocket, out var mappedId))
+            {
+                if (_clientIdToSockets.TryGetValue(mappedId, out var set))
+                {
+                    set.TryRemove(webSocket, out _);
+                    if (set.IsEmpty)
+                    {
+                        _clientIdToSockets.TryRemove(mappedId, out _);
+                    }
+                }
+            }
+            _logger.LogInformation("WebSocket disconnected: {SocketId}. Total open sockets: {Count}", 
+                socketId, GetConnectionCount());
             
             if (webSocket.State == WebSocketState.Open)
             {
@@ -118,18 +133,21 @@ public class WebSocketManager : IWebSocketManager
 
     public async Task BroadcastMessageAsync(WebSocketMessage message)
     {
-        if (_sockets.IsEmpty) return;
+        if (_clientIdToSockets.IsEmpty) return;
 
         var messageJson = JsonSerializer.Serialize(message, JsonOptions);
         var messageBytes = Encoding.UTF8.GetBytes(messageJson);
         
         var tasks = new List<Task>();
         
-        foreach (var socket in _sockets.Values.ToList())
+        foreach (var set in _clientIdToSockets.Values.ToList())
         {
-            if (socket.State == WebSocketState.Open)
+            foreach (var socket in set.Keys.ToList())
             {
-                tasks.Add(SendBytesToSocketAsync(socket, messageBytes));
+                if (socket.State == WebSocketState.Open)
+                {
+                    tasks.Add(SendBytesToSocketAsync(socket, messageBytes));
+                }
             }
         }
 
@@ -174,14 +192,23 @@ public class WebSocketManager : IWebSocketManager
 
     public async Task SendMessageToClientAsync(string clientId, WebSocketMessage message)
     {
-        if (_sockets.TryGetValue(clientId, out var webSocket) && webSocket.State == WebSocketState.Open)
+        if (_clientIdToSockets.TryGetValue(clientId, out var set) && !set.IsEmpty)
         {
-            await SendMessageToSocketAsync(webSocket, message);
+            var tasks = new List<Task>();
+            foreach (var socket in set.Keys.ToList())
+            {
+                if (socket.State == WebSocketState.Open)
+                {
+                    tasks.Add(SendMessageToSocketAsync(socket, message));
+                }
+            }
+            if (tasks.Count > 0)
+            {
+                await Task.WhenAll(tasks);
+                return;
+            }
         }
-        else
-        {
-            _logger.LogWarning("Cannot send message to client {ClientId}: Socket not found or not open", clientId);
-        }
+        _logger.LogWarning("Cannot send message to client {ClientId}: No open sockets", clientId);
     }
 
     public string? GetSocketIdForWebSocket(WebSocket webSocket)
@@ -191,24 +218,27 @@ public class WebSocketManager : IWebSocketManager
 
     public void RemoveSocket(WebSocket webSocket)
     {
-        // Remove from reverse lookup first
-        if (_socketToId.TryRemove(webSocket, out var socketId))
+        // Remove from reverse lookup then from its client set
+        if (_socketToId.TryRemove(webSocket, out var clientId))
         {
-            _sockets.TryRemove(socketId, out _);
-        }
-        else
-        {
-            // Fallback: find by value (less efficient but ensures cleanup)
-            var socketToRemove = _sockets.FirstOrDefault(x => x.Value == webSocket);
-            if (!socketToRemove.Equals(default(KeyValuePair<string, WebSocket>)))
+            if (_clientIdToSockets.TryGetValue(clientId, out var set))
             {
-                _sockets.TryRemove(socketToRemove.Key, out _);
+                set.TryRemove(webSocket, out _);
+                if (set.IsEmpty)
+                {
+                    _clientIdToSockets.TryRemove(clientId, out _);
+                }
             }
         }
     }
 
     public int GetConnectionCount()
     {
-        return _sockets.Count(x => x.Value.State == WebSocketState.Open);
+        var total = 0;
+        foreach (var set in _clientIdToSockets.Values)
+        {
+            total += set.Keys.Count(s => s.State == WebSocketState.Open);
+        }
+        return total;
     }
 }

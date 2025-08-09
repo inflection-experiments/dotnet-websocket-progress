@@ -5,7 +5,7 @@ namespace WebSocketsBackend.Services;
 
 public interface IWebSocketManager
 {
-    Task HandleWebSocketAsync(WebSocket webSocket);
+    Task HandleWebSocketAsync(WebSocket webSocket, string? desiredSocketId = null);
     Task BroadcastMessageAsync(WebSocketMessage message);
     Task SendMessageToSocketAsync(WebSocket webSocket, WebSocketMessage message);
     Task SendMessageToClientAsync(string clientId, WebSocketMessage message); // Send message to specific client by ID

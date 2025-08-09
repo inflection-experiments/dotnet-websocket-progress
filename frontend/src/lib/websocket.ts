@@ -42,12 +42,33 @@ export const stats = writable({
 
 class WebSocketManager {
 	private socket: WebSocket | null = null;
+	private desiredId: string | undefined;
 	private reconnectAttempts = 0;
 	private maxReconnectAttempts = 5;
 	private reconnectInterval = 1000;
 	private isManualDisconnect = false;
 
-	connect() {
+    private getPreferredSessionId(): string | undefined {
+        try {
+            // 1) localStorage 'sessionId'
+            const ls = (typeof localStorage !== 'undefined') ? localStorage.getItem('sessionId') : null;
+            if (ls && ls.trim().length > 0) return ls;
+
+            // 2) cookie 'sessionId'
+            if (typeof document !== 'undefined' && document.cookie) {
+                const match = document.cookie.split(';').map(p => p.trim()).find(p => p.startsWith('sessionId='));
+                if (match) {
+                    const value = match.substring('sessionId='.length);
+                    if (value && value.trim().length > 0) return decodeURIComponent(value);
+                }
+            }
+        } catch {
+            // ignore
+        }
+        return undefined;
+    }
+
+	connect(sessionId?: string) {
 		if (!browser) return;
 		
 		if (this.socket && this.socket.readyState === WebSocket.OPEN) {
@@ -55,8 +76,15 @@ class WebSocketManager {
 			return;
 		}
 
+		// Remember desired socket id for reconnects
+		if (sessionId) {
+			this.desiredId = sessionId;
+		}
+
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const wsUrl = `${protocol}//localhost:5000/ws`; // Backend URL
+		const baseUrl = `${protocol}//localhost:5000/ws`;
+        const idToUse = sessionId || this.desiredId || this.getPreferredSessionId();
+		const wsUrl = idToUse ? `${baseUrl}?sessionId=${encodeURIComponent(idToUse)}` : baseUrl; // pass desired id
 		
 		connectionState.update(state => ({ ...state, connecting: true }));
 		this.addLog(`Attempting to connect to ${wsUrl}`);

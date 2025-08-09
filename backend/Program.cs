@@ -55,7 +55,10 @@ app.Map("/ws", async (HttpContext context, IWebSocketManager wsManager, ILogger<
         try
         {
             var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-            await wsManager.HandleWebSocketAsync(webSocket);
+            // Allow clients to pass desired ID via query: ?sessionId= or ?clientId=
+            var desiredId = context.Request.Query["sessionId"].FirstOrDefault()
+                            ?? context.Request.Query["clientId"].FirstOrDefault();
+            await wsManager.HandleWebSocketAsync(webSocket, desiredId);
         }
         catch (Exception ex)
         {
