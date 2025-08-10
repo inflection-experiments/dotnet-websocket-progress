@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { connectionState, tasks, logs, stats, wsManager } from '$lib/websocket';
+	import { wsManager } from '$lib/websocket';
+	import { connectionState, tasks, logs, stats } from '$lib/connection.state';
 	import { apiClient } from '$lib/api';
 	import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
 	import TaskItem from '$lib/components/TaskItem.svelte';
