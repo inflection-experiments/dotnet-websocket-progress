@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { connectionState, wsManager } from '$lib/websocket';
+	import { wsManager } from '$lib/websocket';
+	import { connectionState } from '$lib/connection.state';
 
 	let { connection } = $props<{ connection: typeof connectionState }>();
 

@@ -6,10 +6,65 @@ using WebSocketsBackend.Models;
 
 namespace WebSocketsBackend.Services;
 
+/// <summary>
+/// Thread-safe wrapper around a list of WebSockets
+/// </summary>
+public class ConcurrentWebSocketList
+{
+    private readonly List<WebSocket> _sockets = new();
+    private readonly object _lock = new();
+
+    public void Add(WebSocket socket)
+    {
+        lock (_lock)
+        {
+            _sockets.Add(socket);
+        }
+    }
+
+    public bool Remove(WebSocket socket)
+    {
+        lock (_lock)
+        {
+            return _sockets.Remove(socket);
+        }
+    }
+
+    public List<WebSocket> GetSnapshot()
+    {
+        lock (_lock)
+        {
+            return new List<WebSocket>(_sockets);
+        }
+    }
+
+    public bool IsEmpty
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _sockets.Count == 0;
+            }
+        }
+    }
+
+    public int Count
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _sockets.Count;
+            }
+        }
+    }
+}
+
 public class WebSocketManager : IWebSocketManager
 {
-    // Maps client/session id -> set of sockets (value is a dummy byte to emulate a concurrent set)
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<WebSocket, byte>> _clientIdToSockets = new();
+    // Maps client/session id -> list of sockets
+    private readonly ConcurrentDictionary<string, ConcurrentWebSocketList> _clientIdToSockets = new();
     private readonly ConcurrentDictionary<WebSocket, string> _socketToId = new(); // Reverse lookup from socket to ID
     private readonly ILogger<WebSocketManager> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -27,8 +82,8 @@ public class WebSocketManager : IWebSocketManager
         // Prefer provided desiredSocketId (e.g., sessionId). Multiple sockets can map to the same id.
         var socketId = !string.IsNullOrWhiteSpace(desiredSocketId) ? desiredSocketId : Guid.NewGuid().ToString();
 
-        var socketSet = _clientIdToSockets.GetOrAdd(socketId, static _ => new ConcurrentDictionary<WebSocket, byte>());
-        socketSet.TryAdd(webSocket, 0);
+        var socketList = _clientIdToSockets.GetOrAdd(socketId, static _ => new ConcurrentWebSocketList());
+        socketList.Add(webSocket);
         _socketToId.TryAdd(webSocket, socketId);
 
         _logger.LogInformation("WebSocket connected: {SocketId}. Total open sockets: {Count}", 
@@ -55,13 +110,13 @@ public class WebSocketManager : IWebSocketManager
         }
         finally
         {
-            // Remove this socket from its client set
+            // Remove this socket from its client list
             if (_socketToId.TryRemove(webSocket, out var mappedId))
             {
-                if (_clientIdToSockets.TryGetValue(mappedId, out var set))
+                if (_clientIdToSockets.TryGetValue(mappedId, out var list))
                 {
-                    set.TryRemove(webSocket, out _);
-                    if (set.IsEmpty)
+                    list.Remove(webSocket);
+                    if (list.IsEmpty)
                     {
                         _clientIdToSockets.TryRemove(mappedId, out _);
                     }
@@ -140,9 +195,9 @@ public class WebSocketManager : IWebSocketManager
         
         var tasks = new List<Task>();
         
-        foreach (var set in _clientIdToSockets.Values.ToList())
+        foreach (var list in _clientIdToSockets.Values.ToList())
         {
-            foreach (var socket in set.Keys.ToList())
+            foreach (var socket in list.GetSnapshot())
             {
                 if (socket.State == WebSocketState.Open)
                 {
@@ -192,10 +247,10 @@ public class WebSocketManager : IWebSocketManager
 
     public async Task SendMessageToClientAsync(string clientId, WebSocketMessage message)
     {
-        if (_clientIdToSockets.TryGetValue(clientId, out var set) && !set.IsEmpty)
+        if (_clientIdToSockets.TryGetValue(clientId, out var list) && !list.IsEmpty)
         {
             var tasks = new List<Task>();
-            foreach (var socket in set.Keys.ToList())
+            foreach (var socket in list.GetSnapshot())
             {
                 if (socket.State == WebSocketState.Open)
                 {
@@ -218,13 +273,13 @@ public class WebSocketManager : IWebSocketManager
 
     public void RemoveSocket(WebSocket webSocket)
     {
-        // Remove from reverse lookup then from its client set
+        // Remove from reverse lookup then from its client list
         if (_socketToId.TryRemove(webSocket, out var clientId))
         {
-            if (_clientIdToSockets.TryGetValue(clientId, out var set))
+            if (_clientIdToSockets.TryGetValue(clientId, out var list))
             {
-                set.TryRemove(webSocket, out _);
-                if (set.IsEmpty)
+                list.Remove(webSocket);
+                if (list.IsEmpty)
                 {
                     _clientIdToSockets.TryRemove(clientId, out _);
                 }
@@ -235,9 +290,9 @@ public class WebSocketManager : IWebSocketManager
     public int GetConnectionCount()
     {
         var total = 0;
-        foreach (var set in _clientIdToSockets.Values)
+        foreach (var list in _clientIdToSockets.Values)
         {
-            total += set.Keys.Count(s => s.State == WebSocketState.Open);
+            total += list.GetSnapshot().Count(s => s.State == WebSocketState.Open);
         }
         return total;
     }
